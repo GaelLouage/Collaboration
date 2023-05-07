@@ -7,97 +7,88 @@ using static System.Runtime.InteropServices.JavaScript.JSType;
 using System.Reflection.Emit;
 using Microsoft.AspNetCore.Mvc;
 using System.Net.NetworkInformation;
+using System.Runtime.CompilerServices;
+using Collaboration.Repositories.Classes;
+using Collaboration.Constants;
+using System.Collections;
 
 namespace Collaboration.Endpoints
 {
     public static class UserEndpoints
     {
+      
         public static void RegisterUserEndPoints(this WebApplication app)
         {
-            app.GetUserByName();
-            app.AddUser();
-            app.UpdateUser();
-            app.GetAllUsers();
-            app.DeleteUser();
+            
+            app.MapGet("/GetUserByName/{name}", GetUserByName).WithDisplayName("GetUserByName");
+            app.MapPost("/AddUser", AddUser).WithDisplayName("AddUser");
+            app.MapPatch("/UpdateUser/{name}", UpdateUser).WithDisplayName("UpdateUser");
+            app.MapGet("/GetAllUsers", GetAllUsers).WithDisplayName("GetAllUsers");
+            app.MapDelete("/DeleteUser/{name}", DeleteUser).WithDisplayName("DeleteUser");
         }
         // get all users
-        private static RouteHandlerBuilder GetAllUsers(this WebApplication app)
+        private static async Task<IResult> GetAllUsers([FromServices] MongoRepository<User> userRepository)
         {
-            return app.MapGet("User/GetAllUsers", async (IMongoRepository<User> userRepository) =>
+            var users = (await userRepository.GetAllAsync()).Select(x => x.MapToUserDto());
+            if (users is null)
             {
-                var users = (await userRepository.GetAllAsync()).Select(x => x.MapToUserDto());
-                if(users is null)
-                {
-                    return Results.NotFound("No users found!");
-                }
-                return Results.Ok(users);
-            });
+                return Results.NotFound("No users found!");
+            }
+            return Results.Ok(users);
         }
         // get a user by username
-        private static RouteHandlerBuilder GetUserByName(this WebApplication app)
+        private static async Task<IResult> GetUserByName([FromQuery] string name, [FromServices] IMongoRepository<User> userRepository)
         {
-            return app.MapGet("User/{name}", async (string name, IMongoRepository<User> userRepository) =>
+            var user = await userRepository.GetByUserNameAsync(name);
+
+            if (user is null)
             {
-                var user = await userRepository.GetByUserNameAsync(name);
+                return Results.NotFound($"No user with name {name} found!");
+            }
 
-                if (user is null)
-                {
-                    return Results.NotFound($"No user with name {name} found!");
-                }
-
-                var userDto = user.MapToUserDto();
-                return Results.Ok(userDto);
-            });
+            var userDto = user.MapToUserDto();
+            return Results.Ok(userDto);
         }
         // add a new user
-        private static RouteHandlerBuilder AddUser(this WebApplication app)
+        private static async Task<IResult> AddUser(User user, [FromServices] MongoRepository<User> userRepository)
         {
-            return app.MapPost("User/AddUser", async (User user, IMongoRepository<User> userRepository) =>
+            user.UpdatedAt = DateTime.UtcNow;
+            user.CreatedAt = DateTime.UtcNow;
+            user.Password = user.Password.HashToPassword();
+            await userRepository.InsertAsync(user);
+            var userCreated = await userRepository.GetByUserNameAsync(user.Name);
+            if (userCreated is null)
             {
-                user.UpdatedAt = DateTime.UtcNow;
-                user.CreatedAt = DateTime.UtcNow;
-                user.Password = user.Password.HashToPassword();
-                await userRepository.InsertAsync(user);
-                var userCreated = await userRepository.GetByUserNameAsync(user.Name);
-                if (userCreated is null)
-                {
-                    return Results.BadRequest($"Failed to create user!");
-                }
-                return Results.Ok(userCreated);
-            });
+                return Results.BadRequest($"Failed to create user!");
+            }
+            return Results.Ok(userCreated);
         }
         // update the user
-        private static RouteHandlerBuilder UpdateUser(this WebApplication app)
+        private static async Task<IResult> UpdateUser( string name, User userModel, [FromServices] MongoRepository<User> userRepository)
         {
-            return app.MapPatch("User/{name}", async (string name,[FromBody] User userModel, IMongoRepository<User> userRepository) =>
+            var user = await userRepository.GetByUserNameAsync(name);
+            if (user is null)
             {
-                var user = await userRepository.GetByUserNameAsync(name);
-                if(user is null)
-                {
-                    return Results.NotFound($"No user with name {name} found!");
-                }
-                // update the user in the database
-                user.Email = userModel.Email;
-                user.Password = userModel.Password.HashToPassword();
-                user.Name = userModel.Name;
-                user.UpdatedAt = DateTime.UtcNow;
-                await userRepository.UpdateAsync(user.Id,user);
-                return Results.Ok(user.MapToUserDto());
-            });
+                return Results.NotFound($"No user with name {name} found!");
+            }
+            // update the user in the database
+            user.Email = userModel.Email;
+            user.Password = userModel.Password.HashToPassword();
+            user.Name = userModel.Name;
+            user.UpdatedAt = DateTime.UtcNow;
+            await userRepository.UpdateAsync(user.Id, user);
+            return Results.Ok(user.MapToUserDto());
         }
         // delete a user
-        private static RouteHandlerBuilder DeleteUser(this WebApplication app)
+        private static async Task<IResult> DeleteUser([FromBody] string name, [FromServices] MongoRepository<User> userRepository)
         {
-            return app.MapDelete("User/DeleteUserByName/{name}", async (string name, IMongoRepository<User> userRepository) =>
+            var user = await userRepository.GetByUserNameAsync(name);
+            if (user is null)
             {
-                var user = await userRepository.GetByUserNameAsync(name);
-                if(user is null)
-                {
-                    return Results.BadRequest("User not found!");
-                }
-                await userRepository.DeleteAsync(user.Id);
-                return Results.Ok("Succesfully deleted user.");
-            });
+                return Results.BadRequest("User not found!");
+            }
+            await userRepository.DeleteAsync(user.Id);
+            return Results.Ok("Succesfully deleted user.");
         }
     }
 }

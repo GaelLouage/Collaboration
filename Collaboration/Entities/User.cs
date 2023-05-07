@@ -1,5 +1,6 @@
 ﻿using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Bson;
+using Collaboration.Enums;
 
 namespace Collaboration.Entities
 {
@@ -13,6 +14,7 @@ namespace Collaboration.Entities
         public string Password { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
-
+        public UserRole Role { get; set; }
     }
+
 }

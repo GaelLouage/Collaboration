@@ -26,9 +26,11 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
 // user endpoints
 app.RegisterUserEndPoints();
-
+// login endpoints
+app.RegisterLoginEndPoints();
 
 
 
